@@ -168,24 +168,6 @@ async function tryMyMemory(q,target){
   return null;
 }
 
-/* ====== ENUNCIATION (ENGLISH) ====== */
-async function updateEnunciation(translatedText, targetLang){
-  const box = document.getElementById('enunciation');
-  if (!translatedText){ box.textContent=''; return; }
-  // If target is already English, show the same text (or you can choose to blank it)
-  if (targetLang === 'en'){ box.textContent = translatedText; return; }
-
-  try{
-    const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(translatedText)}&langpair=${targetLang}|en`);
-    if (!res.ok) throw new Error('enunciation fetch failed');
-    const data = await res.json();
-    const enun = data?.responseData?.translatedText?.trim();
-    box.textContent = enun || "(no enunciation available)";
-  }catch(e){
-    box.textContent = "(failed to fetch enunciation)";
-  }
-}
-
 /* ====== MAIN TRANSLATE ACTION ====== */
 document.getElementById("translateButton").addEventListener("click",async()=>{
   const text=document.getElementById("inputText").value.trim();
@@ -194,27 +176,36 @@ document.getElementById("translateButton").addEventListener("click",async()=>{
   const status=document.getElementById("status");
   const outBox=document.getElementById("outputText");
   document.getElementById("alts").innerHTML="";
-  document.getElementById("enunciation").textContent = ""; // clear previous
   if (!text) return alert("Enter text to translate!");
   status.textContent="Translating...";
   outBox.value="";
+
   const override=applyOverrides(text,target,style);
   if (override){
     outBox.value=override.primary;
     showAlternatives(override.options);
-    status.textContent="Used curated translation ✅";
-    await updateEnunciation(override.primary, target);
+    status.textContent="✅ Used curated translation. Speaking...";
+    speakText(override.primary, target);
     return;
   }
+
   const forceEn=looksEnglish(text);
-  let translated=await tryLibreTranslate(text,target,forceEn);
-  if (!translated) translated=await tryMyMemory(text,target);
-  if (translated){
-    outBox.value=translated;
-    status.textContent="Done.";
-    await updateEnunciation(translated, target);
+  let translated=null;
+
+  if (target === "ta") {
+    translated = await tryMyMemory(text, target);
+    if (!translated) translated = await tryLibreTranslate(text, target, forceEn);
   } else {
-    status.textContent="Translation failed. Try again later.";
+    translated = await tryLibreTranslate(text, target, forceEn);
+    if (!translated) translated = await tryMyMemory(text, target);
+  }
+
+  if (translated){
+    outBox.value = translated;
+    status.textContent = "✅ Translation complete. Speaking...";
+    speakText(translated, target);
+  } else {
+    status.textContent = "❌ Translation failed. Try again later.";
   }
 });
 
@@ -259,21 +250,15 @@ document.getElementById('voiceButton').addEventListener('click',()=>{
   };
 });
 
-/* ====== TEXT-TO-SPEECH FEATURE ====== */
-document.getElementById('speakButton').addEventListener('click', () => {
-  const text = document.getElementById('outputText').value.trim();
-  if (!text) {
-    document.getElementById('status').textContent = "⚠ Nothing to speak!";
-    return;
-  }
+/* ====== TEXT-TO-SPEECH FUNCTION ====== */
+function speakText(text, lang){
+  if (!text) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  const targetLang = document.getElementById('toLang').value;
-  utterance.lang = targetLang + "-IN";
+  utterance.lang = lang + "-IN";
   utterance.rate = 1;
   utterance.pitch = 1;
   window.speechSynthesis.speak(utterance);
-  document.getElementById('status').textContent = "🔊 Speaking...";
-});
+}
 </script>
 </body>
